@@ -630,6 +630,71 @@
       font-size: 14px;
       color: var(--text-dim);
     }
+
+    /* ===== ADD SET / ADD EXERCISE BUTTONS ===== */
+    .add-set-btn, .add-exercise-btn {
+      width: 100%;
+      padding: 10px;
+      background: transparent;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 8px;
+    }
+
+    .add-set-btn:active, .add-exercise-btn:active {
+      background: var(--bg-input);
+      color: var(--text);
+    }
+
+    .add-exercise-btn {
+      margin-bottom: 12px;
+      padding: 14px;
+      font-size: 15px;
+    }
+
+    .remove-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 16px;
+      cursor: pointer;
+      width: 28px;
+      flex-shrink: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .remove-btn:active {
+      color: var(--red);
+    }
+
+    .custom-name-input {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--accent);
+      font-size: 16px;
+      font-weight: 600;
+      padding: 8px 12px;
+      width: 100%;
+      outline: none;
+      margin-bottom: 4px;
+    }
+
+    .custom-name-input:focus {
+      border-color: var(--accent);
+    }
+
+    .custom-name-input::placeholder {
+      color: var(--text-muted);
+      font-weight: 400;
+    }
   </style>
 </head>
 <body>
@@ -960,6 +1025,26 @@ function renderWorkout() {
     }
   });
 
+  // Render previously-saved custom exercises for this day
+  if (existingLog?.exercises) {
+    const scheduleIds = new Set(workout.exercises.map(e => e.id));
+    for (const [exId, data] of Object.entries(existingLog.exercises)) {
+      if (exId.startsWith('custom_') && !scheduleIds.has(exId)) {
+        const customEx = {
+          id: exId,
+          name: data.name || 'Custom Exercise',
+          sets: data.sets.length,
+          reps: null,
+          _custom: true
+        };
+        html += renderExerciseCard(customEx, data.sets, existingLog);
+      }
+    }
+  }
+
+  // Add Exercise button
+  html += `<button class="add-exercise-btn" id="addExerciseBtn">+ Add Exercise</button>`;
+
   // Finisher
   if (workout.finisher) {
     html += `<div class="info-card">
@@ -998,7 +1083,122 @@ function renderWorkout() {
     });
   }
 
+  // Wire up "+ Set" buttons
+  content.querySelectorAll('.add-set-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.exercise-card');
+      const grid = card.querySelector('.sets-grid');
+      const setCount = grid.querySelectorAll('.set-row').length - 1; // minus header row
+      const newRow = document.createElement('div');
+      newRow.className = 'set-row';
+      newRow.innerHTML = `
+        <div class="set-label">${setCount + 1}</div>
+        <div class="input-col">
+          <input type="number" class="set-input weight-input" inputmode="numeric"
+            placeholder="—" value="" data-set="${setCount}">
+        </div>
+        <div class="input-col">
+          <input type="number" class="set-input reps-input" inputmode="numeric"
+            placeholder="—" value="" data-set="${setCount}">
+        </div>
+        <button class="remove-btn" title="Remove set">&times;</button>`;
+      grid.appendChild(newRow);
+      newRow.querySelector('.remove-btn').addEventListener('click', () => {
+        newRow.remove();
+        renumberSets(grid);
+      });
+    });
+  });
+
+  // Wire up "+ Add Exercise" button
+  const addExBtn = content.querySelector('#addExerciseBtn');
+  if (addExBtn) {
+    addExBtn.addEventListener('click', () => {
+      const customId = 'custom_' + Date.now();
+      const card = document.createElement('div');
+      card.className = 'exercise-card';
+      card.dataset.exerciseId = customId;
+      card.dataset.custom = 'true';
+      card.innerHTML = `
+        <input type="text" class="custom-name-input" placeholder="Exercise name...">
+        <div class="exercise-target">Custom exercise</div>
+        <div class="sets-grid">
+          <div class="set-row">
+            <div class="set-label"></div>
+            <div class="input-col"><div class="input-label">LBS</div></div>
+            <div class="input-col"><div class="input-label">REPS</div></div>
+            <div class="set-label"></div>
+          </div>
+          ${[1,2,3].map(i => `<div class="set-row">
+            <div class="set-label">${i}</div>
+            <div class="input-col">
+              <input type="number" class="set-input weight-input" inputmode="numeric"
+                placeholder="—" value="" data-set="${i-1}">
+            </div>
+            <div class="input-col">
+              <input type="number" class="set-input reps-input" inputmode="numeric"
+                placeholder="—" value="" data-set="${i-1}">
+            </div>
+            <button class="remove-btn" title="Remove set">&times;</button>
+          </div>`).join('')}
+        </div>
+        <button class="add-set-btn">+ Set</button>
+        <button class="remove-btn" style="width:100%;font-size:13px;color:var(--red);margin-top:8px;justify-content:center;">Remove exercise</button>`;
+
+      addExBtn.insertAdjacentElement('beforebegin', card);
+
+      // Wire up add set for this new card
+      card.querySelector('.add-set-btn').addEventListener('click', () => {
+        const grid = card.querySelector('.sets-grid');
+        const setCount = grid.querySelectorAll('.set-row').length - 1;
+        const newRow = document.createElement('div');
+        newRow.className = 'set-row';
+        newRow.innerHTML = `
+          <div class="set-label">${setCount + 1}</div>
+          <div class="input-col">
+            <input type="number" class="set-input weight-input" inputmode="numeric"
+              placeholder="—" value="" data-set="${setCount}">
+          </div>
+          <div class="input-col">
+            <input type="number" class="set-input reps-input" inputmode="numeric"
+              placeholder="—" value="" data-set="${setCount}">
+          </div>
+          <button class="remove-btn" title="Remove set">&times;</button>`;
+        grid.appendChild(newRow);
+        newRow.querySelector('.remove-btn').addEventListener('click', () => {
+          newRow.remove();
+          renumberSets(grid);
+        });
+      });
+
+      // Wire up remove set buttons
+      card.querySelectorAll('.sets-grid .remove-btn').forEach(rb => {
+        rb.addEventListener('click', () => {
+          rb.closest('.set-row').remove();
+          renumberSets(card.querySelector('.sets-grid'));
+        });
+      });
+
+      // Wire up remove exercise button (last remove-btn is the exercise-level one)
+      const removeBtns = card.querySelectorAll(':scope > .remove-btn');
+      removeBtns[removeBtns.length - 1].addEventListener('click', () => card.remove());
+
+      // Focus the name input
+      card.querySelector('.custom-name-input').focus();
+    });
+  }
+
   updateSaveBtn(existingLog);
+}
+
+// Re-number set labels after a removal
+function renumberSets(grid) {
+  const rows = grid.querySelectorAll('.set-row');
+  // Skip header row (index 0)
+  for (let i = 1; i < rows.length; i++) {
+    const label = rows[i].querySelector('.set-label');
+    if (label) label.textContent = i;
+  }
 }
 
 function renderExerciseCard(ex, lastUsed, existingLog) {
@@ -1006,9 +1206,13 @@ function renderExerciseCard(ex, lastUsed, existingLog) {
   const displayName = ex.editableName ? (prefs.dealers_choice_name || '') : ex.name;
   const targetText = ex.reps ? `${ex.sets} x ${ex.reps}` : `${ex.sets} sets`;
 
-  let html = `<div class="exercise-card" data-exercise-id="${ex.id}">`;
+  const isCustom = ex._custom;
+  let html = `<div class="exercise-card" data-exercise-id="${ex.id}"${isCustom ? ' data-custom="true"' : ''}>`;
 
-  if (ex.editableName) {
+  if (isCustom) {
+    html += `<input type="text" class="custom-name-input" value="${ex.name}">`;
+    html += `<div class="exercise-target">${targetText}</div>`;
+  } else if (ex.editableName) {
     html += `<input type="text" class="dc-name-input" placeholder="Name this exercise..." value="${displayName}">`;
     html += `<div class="exercise-target">${targetText}</div>`;
   } else {
@@ -1046,7 +1250,9 @@ function renderExerciseCard(ex, lastUsed, existingLog) {
     </div>`;
   }
 
-  html += `</div></div>`;
+  html += `</div>`;
+  html += `<button class="add-set-btn" data-exercise-id="${ex.id}">+ Set</button>`;
+  html += `</div>`;
   return html;
 }
 
@@ -1152,7 +1358,13 @@ function saveWorkout() {
       });
 
       if (hasData) {
-        exercises[exId] = { sets };
+        const entry = { sets };
+        // Store name for custom exercises so history can display it
+        if (card.dataset.custom === 'true') {
+          const nameInput = card.querySelector('.custom-name-input');
+          entry.name = nameInput?.value || 'Custom Exercise';
+        }
+        exercises[exId] = entry;
         Storage.saveLastUsed(exId, sets);
       }
     }
@@ -1202,6 +1414,18 @@ function populateExerciseSelect() {
       if (!seen.has(ex.id) && ex.circuit) {
         seen.add(ex.id);
         allExercises.push({ id: ex.id, name: ex.name + ' (circuit)' });
+      }
+    }
+  }
+
+  // Scan logs for custom exercises not in SCHEDULE
+  const logs = Storage.getLogs();
+  for (const log of Object.values(logs)) {
+    if (!log.exercises) continue;
+    for (const [exId, data] of Object.entries(log.exercises)) {
+      if (!seen.has(exId) && exId.startsWith('custom_')) {
+        seen.add(exId);
+        allExercises.push({ id: exId, name: data.name || 'Custom Exercise' });
       }
     }
   }
